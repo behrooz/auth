@@ -5,6 +5,7 @@ import (
 	"authservice/handlers"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -45,7 +46,14 @@ func main() {
 	})
 
 	// Start server
-	port := ":8083"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8083"
+	}
+	// Add colon if missing
+	if port[0] != ':' {
+		port = ":" + port
+	}
 	log.Printf("Auth service starting on port %s", port)
 	log.Fatal(http.ListenAndServe(port, c.Handler(router)))
 }
