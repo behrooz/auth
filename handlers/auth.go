@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"time"
 
@@ -19,7 +20,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var jwtKey = []byte("mysecret123")
+var jwtKey []byte
+
+func init() {
+	// Get JWT secret from environment variable or use default
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "mysecret123"
+		log.Println("Warning: JWT_SECRET not set, using default")
+	}
+	jwtKey = []byte(secret)
+}
 
 func isValidEmail(email string) error {
 	const emailRegex = `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`

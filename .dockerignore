@@ -1,0 +1,15 @@
+__debug_bin*
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+.env
+.git
+.gitignore
+README.md
+SETUP.md
+INTEGRATION_GUIDE.md
+.vscode
+.idea
+

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"log"
+	"os"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -14,11 +15,30 @@ var (
 )
 
 func InitDB() {
-	clientOptions := options.Client().ApplyURI("mongodb://root:pass@server:port/")
+	// Get MongoDB connection string from environment variable
+	connectionString := os.Getenv("MONGODB_CONNECTION_STRING")
+	if connectionString == "" {
+		connectionString = "mongodb://root:secret123@212.64.215.155:32169/"
+		log.Println("Warning: MONGODB_CONNECTION_STRING not set, using default")
+	}
+
+	// Get database name from environment variable
+	databaseName := os.Getenv("MONGODB_DATABASE")
+	if databaseName == "" {
+		databaseName = "vcluster"
+	}
+
+	// Get collection name from environment variable
+	collectionName := os.Getenv("MONGODB_COLLECTION")
+	if collectionName == "" {
+		collectionName = "users"
+	}
+
+	clientOptions := options.Client().ApplyURI(connectionString)
 	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	UserCollection = client.Database("vcluster").Collection("users")
+	UserCollection = client.Database(databaseName).Collection(collectionName)
 }
