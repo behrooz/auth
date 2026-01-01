@@ -15,6 +15,7 @@ var (
 )
 
 func InitDB() {
+<<<<<<< HEAD
 	// Get MongoDB connection string from environment variable
 	connectionString := os.Getenv("MONGODB_CONNECTION_STRING")
 	if connectionString == "" {
@@ -35,6 +36,13 @@ func InitDB() {
 	}
 
 	clientOptions := options.Client().ApplyURI(connectionString)
+=======
+	mongoURI := os.Getenv("MONGO_URI")
+	if mongoURI == "" {
+		mongoURI = "mongodb://root:pass@server:port/"
+	}
+	clientOptions := options.Client().ApplyURI(mongoURI)
+>>>>>>> 72991b1e5511707844f76cd4996eb74a49a1dc2b
 	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
 		log.Fatal(err)

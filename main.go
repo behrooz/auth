@@ -45,13 +45,24 @@ func main() {
 		Debug:            false,
 	})
 
+<<<<<<< HEAD
 	// Get port from environment variable or use default
+=======
+	// Start server
+>>>>>>> 72991b1e5511707844f76cd4996eb74a49a1dc2b
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8083"
 	}
+<<<<<<< HEAD
 	port = ":" + port
 
+=======
+	// Add colon if missing
+	if port[0] != ':' {
+		port = ":" + port
+	}
+>>>>>>> 72991b1e5511707844f76cd4996eb74a49a1dc2b
 	log.Printf("Auth service starting on port %s", port)
 	log.Fatal(http.ListenAndServe(port, c.Handler(router)))
 }

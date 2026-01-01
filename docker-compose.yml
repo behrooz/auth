@@ -1,0 +1,33 @@
+
+
+services:
+  auth-service:
+    build: .
+    ports:
+      - "8083:8083"
+    environment:
+      - MONGO_URI=mongodb://root:example@mongo:27017/vcluster?authSource=admin
+      - PORT=8083
+    depends_on:
+      - mongo
+    networks:
+      - auth-network
+
+  mongo:
+    image: mongo:6.0
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - auth-network
+
+networks:
+  auth-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
