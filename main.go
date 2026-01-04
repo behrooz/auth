@@ -21,12 +21,18 @@ func main() {
 	// Public endpoints
 	router.HandleFunc("/register", handlers.RegisterHandler).Methods("POST")
 	router.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
+	router.HandleFunc("/auth/apikey", handlers.AccessKeyAuthHandler).Methods("POST")
 
 	// Token validation endpoint
 	router.HandleFunc("/validate", handlers.ValidateTokenHandler).Methods("POST")
 
 	// Logout endpoint
 	router.HandleFunc("/logout", handlers.LogoutHandler).Methods("POST")
+
+	// API Key management endpoints (require JWT authentication)
+	router.HandleFunc("/apikeys", handlers.CreateAPIKeyHandler).Methods("POST")
+	router.HandleFunc("/apikeys", handlers.ListAPIKeysHandler).Methods("GET")
+	router.HandleFunc("/apikeys/delete", handlers.DeleteAPIKeyHandler).Methods("POST")
 
 	// Health check endpoint
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

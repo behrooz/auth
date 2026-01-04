@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	Client         *mongo.Client
-	UserCollection *mongo.Collection
+	Client           *mongo.Client
+	UserCollection   *mongo.Collection
+	APIKeyCollection *mongo.Collection
 )
 
 func InitDB() {
@@ -42,4 +43,5 @@ func InitDB() {
 
 	Client = client
 	UserCollection = client.Database(databaseName).Collection(collectionName)
+	APIKeyCollection = client.Database(databaseName).Collection("apikeys")
 }
