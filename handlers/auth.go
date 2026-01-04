@@ -110,7 +110,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
 		return
 	}
-
+	fmt.Println(storedUser)
 	expirationTime := time.Now().Add(120 * time.Minute)
 	claims := jwt.MapClaims{
 		"username": req.Username,
