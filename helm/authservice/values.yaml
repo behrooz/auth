@@ -36,9 +36,12 @@ service:
 ingress:
   enabled: false
   className: ""
-  annotations: {}
+  annotations:
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Ensure paths are forwarded correctly without rewriting
+    nginx.ingress.kubernetes.io/use-regex: "false"
   hosts:
     - host: authservice.local
       paths:
