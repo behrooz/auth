@@ -34,8 +34,10 @@ type LogoutResponse struct {
 }
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username  string `json:"username,omitempty"`
+	Password  string `json:"password,omitempty"`
+	AccessKey string `json:"accessKey,omitempty"`
+	SecretKey string `json:"secretKey,omitempty"`
 }
 
 type LoginResponse struct {

@@ -103,21 +103,70 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var storedUser models.User
-	err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": req.Username}).Decode(&storedUser)
-	if err != nil {
-		http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
-		return
+
+	// Check if access key and secret key are provided
+	if req.AccessKey != "" && req.SecretKey != "" {
+		// Authenticate using access key and secret key
+		var apiKey models.APIKey
+		err := db.APIKeyCollection.FindOne(context.TODO(), bson.M{"accessKey": req.AccessKey, "isActive": true}).Decode(&apiKey)
+		if err != nil {
+			http.Error(w, `{"message": "Invalid access key or secret key"}`, http.StatusUnauthorized)
+			return
+		}
+
+		// Verify the secret key
+		err = bcrypt.CompareHashAndPassword([]byte(apiKey.SecretKey), []byte(req.SecretKey))
+		if err != nil {
+			http.Error(w, `{"message": "Invalid access key or secret key"}`, http.StatusUnauthorized)
+			return
+		}
+
+		// Get user information
+		userIDFilter := bson.M{"_id": apiKey.UserID}
+		if objectID, err := primitive.ObjectIDFromHex(apiKey.UserID); err == nil {
+			userIDFilter = bson.M{"_id": objectID}
+		}
+		err = db.UserCollection.FindOne(context.TODO(), userIDFilter).Decode(&storedUser)
+		if err != nil {
+			log.Printf("Error finding user: %v\n", err)
+			http.Error(w, `{"message": "User not found"}`, http.StatusInternalServerError)
+			return
+		}
+
+		// Update last used timestamp
+		_, err = db.APIKeyCollection.UpdateOne(
+			context.TODO(),
+			bson.M{"_id": apiKey.ID},
+			bson.M{"$set": bson.M{"lastUsedAt": time.Now()}},
+		)
+		if err != nil {
+			log.Printf("Error updating last used timestamp: %v\n", err)
+			// Don't fail the request if this update fails
+		}
+	} else {
+		// Authenticate using username and password
+		if req.Username == "" || req.Password == "" {
+			http.Error(w, `{"message": "Either username/password or accessKey/secretKey must be provided"}`, http.StatusBadRequest)
+			return
+		}
+
+		err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": req.Username}).Decode(&storedUser)
+		if err != nil {
+			http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
+			return
+		}
+
+		err = bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(req.Password))
+		if err != nil {
+			http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
+			return
+		}
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(req.Password))
-	if err != nil {
-		http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
-		return
-	}
-	fmt.Println(storedUser)
+	// Generate JWT token
 	expirationTime := time.Now().Add(120 * time.Minute)
 	claims := jwt.MapClaims{
-		"username": req.Username,
+		"username": storedUser.Username,
 		"exp":      expirationTime.Unix(),
 		"iat":      time.Now().Unix(),
 	}
