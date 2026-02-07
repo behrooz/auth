@@ -3,11 +3,13 @@ package main
 import (
 	"authservice/db"
 	"authservice/handlers"
+	"authservice/metrics"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 )
 
@@ -17,6 +19,9 @@ func main() {
 
 	// Create router
 	router := mux.NewRouter()
+
+	// Add Prometheus metrics middleware
+	router.Use(metrics.HTTPMetricsMiddleware())
 
 	// Add logging middleware to debug requests
 	router.Use(func(next http.Handler) http.Handler {
@@ -48,6 +53,9 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status": "ok"}`))
 	}).Methods("GET")
+
+	// Prometheus metrics endpoint
+	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// Handle 404 with logging
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

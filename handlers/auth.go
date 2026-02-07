@@ -16,6 +16,7 @@ import (
 
 	"authservice/cache"
 	"authservice/db"
+	"authservice/metrics"
 	"authservice/models"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -96,6 +97,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var req models.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"message": "Invalid JSON body"}`, http.StatusBadRequest)
@@ -103,13 +105,18 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var storedUser models.User
+	var authMethod string
+	var authSuccess bool
 
 	// Check if access key and secret key are provided
 	if req.AccessKey != "" && req.SecretKey != "" {
+		authMethod = "apikey"
 		// Authenticate using access key and secret key
 		var apiKey models.APIKey
 		err := db.APIKeyCollection.FindOne(context.TODO(), bson.M{"accessKey": req.AccessKey, "isActive": true}).Decode(&apiKey)
 		if err != nil {
+			metrics.RecordAuthAttempt(authMethod, false)
+			metrics.RecordAuthDuration(authMethod, time.Since(start))
 			http.Error(w, `{"message": "Invalid access key or secret key"}`, http.StatusUnauthorized)
 			return
 		}
@@ -117,9 +124,12 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Verify the secret key
 		err = bcrypt.CompareHashAndPassword([]byte(apiKey.SecretKey), []byte(req.SecretKey))
 		if err != nil {
+			metrics.RecordAuthAttempt(authMethod, false)
+			metrics.RecordAuthDuration(authMethod, time.Since(start))
 			http.Error(w, `{"message": "Invalid access key or secret key"}`, http.StatusUnauthorized)
 			return
 		}
+		authSuccess = true
 
 		// Get user information
 		userIDFilter := bson.M{"_id": apiKey.UserID}
@@ -145,6 +155,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Authenticate using username and password
+		authMethod = "login"
 		if req.Username == "" || req.Password == "" {
 			http.Error(w, `{"message": "Either username/password or accessKey/secretKey must be provided"}`, http.StatusBadRequest)
 			return
@@ -152,15 +163,20 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 		err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": req.Username}).Decode(&storedUser)
 		if err != nil {
+			metrics.RecordAuthAttempt(authMethod, false)
+			metrics.RecordAuthDuration(authMethod, time.Since(start))
 			http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
 			return
 		}
 
 		err = bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(req.Password))
 		if err != nil {
+			metrics.RecordAuthAttempt(authMethod, false)
+			metrics.RecordAuthDuration(authMethod, time.Since(start))
 			http.Error(w, `{"message": "Invalid username or password"}`, http.StatusUnauthorized)
 			return
 		}
+		authSuccess = true
 	}
 
 	// Generate JWT token
@@ -182,6 +198,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// Store user session in cache
 	cache.SetSession(tokenString, storedUser.ID, storedUser.Username, storedUser.Email)
 
+	// Record successful authentication
+	metrics.RecordAuthAttempt(authMethod, authSuccess)
+	metrics.RecordAuthDuration(authMethod, time.Since(start))
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.LoginResponse{
 		Token: tokenString,
@@ -189,6 +209,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var req models.TokenValidationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"message": "Invalid JSON body"}`, http.StatusBadRequest)
@@ -215,6 +236,8 @@ func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil || !parsedToken.Valid {
+		metrics.RecordAuthAttempt("validate", false)
+		metrics.RecordAuthDuration("validate", time.Since(start))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(models.TokenValidationResponse{
 			Valid:   false,
@@ -226,6 +249,8 @@ func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if token is expired
 	if exp, ok := claims["exp"].(float64); ok {
 		if time.Now().Unix() > int64(exp) {
+			metrics.RecordAuthAttempt("validate", false)
+			metrics.RecordAuthDuration("validate", time.Since(start))
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(models.TokenValidationResponse{
 				Valid:   false,
@@ -238,6 +263,8 @@ func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract username
 	username, ok := claims["username"].(string)
 	if !ok || username == "" {
+		metrics.RecordAuthAttempt("validate", false)
+		metrics.RecordAuthDuration("validate", time.Since(start))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(models.TokenValidationResponse{
 			Valid:   false,
@@ -249,6 +276,8 @@ func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Check cache first - if session exists in cache, token is valid
 	session, found := cache.GetSession(token)
 	if found {
+		metrics.RecordAuthAttempt("validate", true)
+		metrics.RecordAuthDuration("validate", time.Since(start))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(models.TokenValidationResponse{
 			Valid:    true,
@@ -264,6 +293,8 @@ func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// If not in cache, validate user exists in database (fallback)
 	count, err := db.UserCollection.CountDocuments(context.TODO(), bson.M{"username": username})
 	if err != nil || count <= 0 {
+		metrics.RecordAuthAttempt("validate", false)
+		metrics.RecordAuthDuration("validate", time.Since(start))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(models.TokenValidationResponse{
 			Valid:   false,
@@ -274,6 +305,8 @@ func ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	// User exists but not in cache - token might be valid but session expired
 	// For security, we'll return invalid if not in cache
+	metrics.RecordAuthAttempt("validate", false)
+	metrics.RecordAuthDuration("validate", time.Since(start))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.TokenValidationResponse{
 		Valid:   false,
@@ -421,6 +454,8 @@ func CreateAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metrics.RecordAPIKeyOperation("create")
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(models.CreateAPIKeyResponse{
@@ -466,6 +501,8 @@ func ListAPIKeysHandler(w http.ResponseWriter, r *http.Request) {
 			IsActive:    key.IsActive,
 		}
 	}
+
+	metrics.RecordAPIKeyOperation("list")
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.ListAPIKeysResponse{
@@ -514,6 +551,8 @@ func DeleteAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metrics.RecordAPIKeyOperation("delete")
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(models.DeleteAPIKeyResponse{
@@ -523,6 +562,7 @@ func DeleteAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 
 // AccessKeyAuthHandler authenticates using access key and secret key
 func AccessKeyAuthHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var req models.AccessKeyAuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"message": "Invalid JSON body"}`, http.StatusBadRequest)
@@ -538,6 +578,9 @@ func AccessKeyAuthHandler(w http.ResponseWriter, r *http.Request) {
 	var apiKey models.APIKey
 	err := db.APIKeyCollection.FindOne(context.TODO(), bson.M{"accessKey": req.AccessKey, "isActive": true}).Decode(&apiKey)
 	if err != nil {
+		metrics.RecordAuthAttempt("apikey", false)
+		metrics.RecordAuthDuration("apikey", time.Since(start))
+		metrics.RecordAPIKeyOperation("authenticate")
 		http.Error(w, `{"message": "Invalid access key or secret key"}`, http.StatusUnauthorized)
 		return
 	}
@@ -545,6 +588,9 @@ func AccessKeyAuthHandler(w http.ResponseWriter, r *http.Request) {
 	// Verify the secret key
 	err = bcrypt.CompareHashAndPassword([]byte(apiKey.SecretKey), []byte(req.SecretKey))
 	if err != nil {
+		metrics.RecordAuthAttempt("apikey", false)
+		metrics.RecordAuthDuration("apikey", time.Since(start))
+		metrics.RecordAPIKeyOperation("authenticate")
 		http.Error(w, `{"message": "Invalid access key or secret key"}`, http.StatusUnauthorized)
 		return
 	}
@@ -592,6 +638,10 @@ func AccessKeyAuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Store user session in cache
 	cache.SetSession(tokenString, user.ID, user.Username, user.Email)
+
+	metrics.RecordAuthAttempt("apikey", true)
+	metrics.RecordAuthDuration("apikey", time.Since(start))
+	metrics.RecordAPIKeyOperation("authenticate")
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.AccessKeyAuthResponse{
