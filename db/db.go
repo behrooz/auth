@@ -18,7 +18,6 @@ var (
 func InitDB() {
 	// Get MongoDB connection string from environment variable
 	connectionString := os.Getenv("MONGODB_CONNECTION_STRING")
-	connectionString = "mongodb://root:secret123@212.64.215.155:32169/vcluster?authSource=admin"
 	if connectionString == "" {
 
 		log.Println("Warning: MONGODB_CONNECTION_STRING not set, using default")
