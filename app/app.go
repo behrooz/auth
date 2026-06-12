@@ -21,7 +21,9 @@ func Handler() http.Handler {
 	// Add logging middleware to debug requests
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Incoming request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+			if r.URL.Path != "health" {
+				log.Printf("Incoming request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+			}
 			next.ServeHTTP(w, r)
 		})
 	})
